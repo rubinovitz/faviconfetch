@@ -1,7 +1,7 @@
 # FaviconFetch
 
 
-FaviconFetch is a go package for fetching favicons given a url.
+FaviconFetch is a go package for fetching a favicon given a url.
 
 ## Examples
 
