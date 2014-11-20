@@ -25,7 +25,6 @@ func init() {
 func TestOne(t *testing.T) {
 
 	uri := serverUrl
-	fmt.Println(uri)
 	faviconChannel := make(chan []byte)
 	go func() {
 		faviconChannel <- Fetch(uri)
