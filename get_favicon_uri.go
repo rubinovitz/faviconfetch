@@ -2,11 +2,9 @@ package faviconfetch
 
 import (
 	"fmt"
-	"golang.org/x/net/html"
-	"io/ioutil"
-	"net/http"
+	"github.com/PuerkitoBio/goquery"
+	"log"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 )
@@ -14,115 +12,116 @@ import (
 // Main access point. Given a uri, return the favicon
 func Fetch(uri string) []byte {
 	faviconUri := Detect(uri)
-	favicon := GetFavicon(uri, faviconUri)
-	return favicon
+	if faviconUri != "" {
+		favicon := GetFavicon(uri, faviconUri)
+		return favicon
+	} else {
+		var favicon []byte
+		favicon = nil
+		return favicon
+	}
 }
 
 // Attempt to get the url's HTML
 func Detect(uri string) string {
-	req := SetHTTPHeaders(uri)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err == nil {
-		defer resp.Body.Close()
-		// get contents of page
-		contents, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Printf("%s", err)
-			os.Exit(1)
-		}
-		return FindFaviconUriInHTML(uri, string(contents))
-
-	} else {
-		if strings.Contains(uri, "://www") != true {
-			uriStruct, err := url.Parse(uri)
-			if err != nil {
-				panic(err)
-			}
-			scheme := uriStruct.Scheme
-			host := uriStruct.Host
-			newUri := scheme + "://www." + host
-			return Detect(newUri)
-		} else {
-			return ""
-		}
+	uri = strings.Replace(uri, ".ico", "", -1)
+	// add http:// to url if not there, otherwise go url does not recognize it as an url
+	if strings.Contains(uri, "http") != true {
+		uri = "http://" + uri
 	}
+	urlObj, parseErr := url.Parse(uri)
+	doc, queryErr := goquery.NewDocument(urlObj.String())
+	if parseErr == nil && queryErr == nil {
+		return FindFaviconUriInHTML(urlObj, doc)
+	}
+	// there's an error with the URL format
+	if parseErr != nil {
+		uriStruct, err := url.Parse(uri)
+		if err != nil {
+			log.Fatal(err)
+		}
+		scheme := uriStruct.Scheme
+		host := uriStruct.Host
+		newUri := scheme + "://" + host
+		return Detect(newUri)
+	}
+	// there's an error reaching the site
+	return ""
 }
 
-// Look for <link rel="icon"
-func FindFaviconUriInHTML(uri string, contents string) string {
-	base, iconUrl := HTMLParserHandler(contents)
-	if base != "" {
-		iconUrl = base + iconUrl
-	} else {
-		iconUrl = uri + iconUrl
+// Look for <link rel="icon" and any base url
+func FindFaviconUriInHTML(uri *url.URL, doc *goquery.Document) string {
+	base, iconUrl := HTMLParserHandler(doc)
+	// replace // path since go HTTP cannot retrieve them
+	re := regexp.MustCompile("^(//)")
+	iconUrl = re.ReplaceAllString(iconUrl, uri.Scheme+"://")
+	base = re.ReplaceAllString(base, uri.Scheme+"://")
+	// if iconUrl is not relative, make it so
+	notRel, _ := regexp.MatchString("^([^/])", iconUrl)
+	notHTTP, _ := regexp.MatchString("^([^http://])", iconUrl)
+
+	if notRel && notHTTP {
+		iconUrl = "/" + iconUrl
 	}
-	if iconUrl == "" && base != "" {
-		iconUrl = uri + "/favicon.ico"
+	if base != "" && iconUrl != "" {
+		iconUrl = base + iconUrl
+		return iconUrl
+	}
+	if base == "" {
+		base = uri.Host
+	}
+	if iconUrl == "" {
+		iconUrl = uri.Scheme + "://" + base + "/favicon.ico"
 		return iconUrl
 	} else {
-		urlMatch, _ := regexp.MatchString("^https?://", iconUrl)
-		if urlMatch {
+		iconUrlParse, err := url.Parse(iconUrl)
+		if err == nil && iconUrlParse.Scheme != "" {
 			return iconUrl
 		} else {
-			iconUrl = "http://" + iconUrl
+			iconUrl = uri.Scheme + "://" + base + iconUrl
 			return iconUrl
 		}
 	}
 }
 
 // parse the HTML to get the favicon url
-func HTMLParserHandler(contents string) (string, string) {
+func HTMLParserHandler(doc *goquery.Document) (string, string) {
 	base := ""
 	uri := ""
-	href := ""
-	d := html.NewTokenizer(strings.NewReader(contents))
 
-	for {
-		if base != "" && uri != "" {
-			return base, uri
-		}
-		// token type
-		tokenType := d.Next()
-		if tokenType == html.ErrorToken {
-
-		}
-		token := d.Token()
-		switch tokenType {
-		case html.StartTagToken:
-			// get link rel tag href value if not shortcut icon
-			if (token.Data) == "link" {
-				isRel := false
-				for i := range token.Attr {
-					key := token.Attr[i].Key
-					val := token.Attr[i].Val
-					shortcutIcon, _ := regexp.MatchString("^(shortcut )?icon$/i", val)
-					if key == "rel" && shortcutIcon == false {
-						isRel = true
-					}
-					if key == "href" {
-						href = val
-					}
-				}
-				if isRel {
-					uri = href
-				}
-			}
-
-			// get base url if exists
-			if (token.Data) == "base" {
-				for i := range token.Attr {
-					key := token.Attr[i].Key
-					val := token.Attr[i].Val
-					if key == "href" {
-						base = val
+	// goroutine and channel to look for favicon
+	uriChannel := make(chan string)
+	go func() {
+		doc.Find("link").Each(func(i int, s *goquery.Selection) {
+			rel, relExists := s.Attr("rel")
+			if relExists == true {
+				shortcutIcon, _ := regexp.MatchString("(?i)^(shortcut )?icon$", rel)
+				if shortcutIcon == true {
+					tagUri, uriExists := s.Attr("href")
+					if uriExists == true {
+						uriChannel <- tagUri
 					}
 				}
 			}
-		case html.ErrorToken:
-			return base, uri
+		})
+		if len(uriChannel) == 0 {
+			uriChannel <- ""
 		}
-	}
 
+	}()
+	baseChannel := make(chan string)
+	go func() {
+		doc.Find("base").Each(func(i int, s *goquery.Selection) {
+			baseUri, hrefExists := s.Attr("href")
+			if hrefExists == true {
+				baseChannel <- baseUri
+			}
+		})
+		if len(baseChannel) == 0 {
+			baseChannel <- ""
+		}
+	}()
+	base = <-baseChannel
+	uri = <-uriChannel
 	return base, uri
 }

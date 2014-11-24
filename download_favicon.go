@@ -12,6 +12,7 @@ import (
 
 // download favicon
 func GetFavicon(uri string, faviconUri string) []byte {
+	fmt.Printf("inside GetFavicon with uri %s, faviconUri %s\n", uri, faviconUri)
 	if faviconUri == "" {
 		return nil
 	}
@@ -30,13 +31,12 @@ func GetFavicon(uri string, faviconUri string) []byte {
 	}
 	contents, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
+		fmt.Printf("contents error: %s", err)
 	}
-	matchHtml, err := regexp.MatchString("<html/i", string(contents))
-	if !matchHtml {
+	matchHtml, err := regexp.MatchString("(?i)<html>", string(contents))
+	if !matchHtml && string(contents) != "" {
 		contentType := http.DetectContentType(contents)
-		matchZip, err := regexp.MatchString("zip/i", contentType)
+		matchZip, err := regexp.MatchString("(?i)zip", contentType)
 		if err != nil {
 			panic(err)
 		}
@@ -44,7 +44,6 @@ func GetFavicon(uri string, faviconUri string) []byte {
 			favicon := contents
 			return favicon
 		} else {
-			// question: will it only ever be gzip?
 			faviconGzipReader, err := gzip.NewReader(req.Body)
 			faviconContents, err := gzip.NewReader(faviconGzipReader)
 			favicon, err := ioutil.ReadAll(faviconContents)
@@ -54,6 +53,7 @@ func GetFavicon(uri string, faviconUri string) []byte {
 			}
 		}
 	} else {
+		return nil
 	}
 	if favicon == "" {
 		return nil
