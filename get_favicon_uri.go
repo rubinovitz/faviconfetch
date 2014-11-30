@@ -1,6 +1,7 @@
 package faviconfetch
 
 import (
+	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"log"
 	"net/url"
