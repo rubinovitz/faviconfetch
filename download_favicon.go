@@ -4,7 +4,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -31,12 +30,10 @@ func GetFavicon(uri string, faviconUri string) []byte {
 		DumpResponse(resp)
 	}
 	if err != nil {
-		log.Println(err)
 		return nil
 	}
 	contents, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("contents error: %s", err)
 		return nil
 	}
 	matchHtml, err := regexp.MatchString("(?i)<html>", string(contents))
@@ -50,7 +47,6 @@ func GetFavicon(uri string, faviconUri string) []byte {
 		// unzip any compression
 		matchZip, err := regexp.MatchString("(?i)zip", contentType)
 		if err != nil {
-			log.Print("Regex error")
 			return nil
 		}
 		if !matchZip {
@@ -62,23 +58,19 @@ func GetFavicon(uri string, faviconUri string) []byte {
 			favicon, err := ioutil.ReadAll(faviconContents)
 			return favicon
 			if err != nil {
-				log.Print("Could not read favicon")
 				return nil
 			}
 		}
 	} else {
-		log.Print("Favicon was HTML")
 		return nil
 	}
 	if favicon == "" {
-		log.Print("Favicon was empty")
 		return nil
 	}
 	new_uri := faviconUri + "/favicon.ico"
 	if faviconUri != new_uri {
 		return GetFavicon(uri, new_uri)
 	}
-	log.Println("Failed to download favicon")
 	// failed to download favicon, give up.
 	return nil
 }
