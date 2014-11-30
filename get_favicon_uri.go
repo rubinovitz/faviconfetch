@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/url"
 	"regexp"
-	"strings"
 )
 
 // Main access point. Given a uri, return the favicon
@@ -23,64 +22,97 @@ func Fetch(uri string) []byte {
 
 // Attempt to get the url's HTML
 func Detect(uri string) string {
-	uri = strings.Replace(uri, ".ico", "", -1)
-	// add http:// to url if not there, otherwise go url does not recognize it as an url
-	if strings.Contains(uri, "http") != true {
+	// remove trailing .ico
+	re := regexp.MustCompile(".ico")
+	uri = re.ReplaceAllString(uri, "")
+	// add http scheme if needed so go url doesn't throw error
+	hasHttp, _ := regexp.MatchString("^http", uri)
+	if hasHttp != true {
 		uri = "http://" + uri
 	}
 	urlObj, parseErr := url.Parse(uri)
 	doc, queryErr := goquery.NewDocument(urlObj.String())
 	if parseErr == nil && queryErr == nil {
+		log.Print("Parse and query work on first try")
 		return FindFaviconUriInHTML(urlObj, doc)
-	}
-	// there's an error with the URL format
-	if parseErr != nil {
-		uriStruct, err := url.Parse(uri)
-		if err != nil {
-			log.Fatal(err)
+	} else {
+		if parseErr != nil {
+			log.Print("parseErr != nil")
+			scheme := urlObj.Scheme
+			if scheme == "" {
+				scheme = "http"
+			}
+			host := urlObj.Host
+			newUri := scheme + "://" + host
+			urlObj, parseErr := url.Parse(newUri)
+			if parseErr == nil {
+				doc, queryErr := goquery.NewDocument(urlObj.String())
+				if queryErr == nil {
+					return FindFaviconUriInHTML(urlObj, doc)
+				} else {
+					return ""
+				}
+			} else {
+				log.Print("New url did not parse")
+				return ""
+			}
+		} else {
+			log.Print("Cannot parse old url")
+			return ""
 		}
-		scheme := uriStruct.Scheme
-		host := uriStruct.Host
-		newUri := scheme + "://" + host
-		return Detect(newUri)
 	}
-	// there's an error reaching the site
-	return ""
 }
 
 // Look for <link rel="icon" and any base url
 func FindFaviconUriInHTML(uri *url.URL, doc *goquery.Document) string {
 	base, iconUrl := HTMLParserHandler(doc)
-	// replace // path since go HTTP cannot retrieve them
+	log.Printf("Inside FindFaviconUriInHTML with base %s, iconUrl %s", base, iconUrl)
+	// replace urls that start with  // path since go http cannot retrieve them
 	re := regexp.MustCompile("^(//)")
 	iconUrl = re.ReplaceAllString(iconUrl, uri.Scheme+"://")
 	base = re.ReplaceAllString(base, uri.Scheme+"://")
-	// if iconUrl is not relative, make it so
-	notRel, _ := regexp.MatchString("^([^/])", iconUrl)
-	notHTTP, _ := regexp.MatchString("^([^http://])", iconUrl)
-
-	if notRel && notHTTP {
-		iconUrl = "/" + iconUrl
-	}
+	// if base url and icon url
 	if base != "" && iconUrl != "" {
+		if base == "/" {
+			base = uri.String()
+		}
+		notRel, _ := regexp.MatchString("^([^/])", iconUrl)
+		// make icon url relative pathed if not
+		if notRel {
+			iconUrl = "/" + iconUrl
+		}
 		iconUrl = base + iconUrl
 		return iconUrl
 	}
+	// if no base use uri
 	if base == "" {
-		base = uri.Host
+
+		base = uri.Scheme + "://" + uri.Host
+
 	}
+
+	// if no icon default to checking /favicon.ico
 	if iconUrl == "" {
-		iconUrl = uri.Scheme + "://" + base + "/favicon.ico"
-		return iconUrl
+		trailingSlash, _ := regexp.MatchString("/$", base)
+		if trailingSlash {
+			iconUrl = base + "favicon.ico"
+		} else {
+			iconUrl = base + "/favicon.ico"
+			return iconUrl
+		}
 	} else {
+		// if iconUrl check to make sure its valid
 		iconUrlParse, err := url.Parse(iconUrl)
+		// if valid, return it
 		if err == nil && iconUrlParse.Scheme != "" {
 			return iconUrl
+			// if invalid, try base and iconUrl
 		} else {
-			iconUrl = uri.Scheme + "://" + base + iconUrl
+			iconUrl = base + iconUrl
 			return iconUrl
 		}
 	}
+	return iconUrl
 }
 
 // parse the HTML to get the favicon url
