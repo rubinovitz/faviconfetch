@@ -3,7 +3,6 @@ package faviconfetch
 import (
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"log"
 	"net/url"
 	"regexp"
 )
@@ -34,11 +33,9 @@ func Detect(uri string) string {
 	urlObj, parseErr := url.Parse(uri)
 	doc, queryErr := goquery.NewDocument(urlObj.String())
 	if parseErr == nil && queryErr == nil {
-		log.Print("Parse and query work on first try")
 		return FindFaviconUriInHTML(urlObj, doc)
 	} else {
 		if parseErr != nil {
-			log.Print("parseErr != nil")
 			scheme := urlObj.Scheme
 			if scheme == "" {
 				scheme = "http"
@@ -54,11 +51,9 @@ func Detect(uri string) string {
 					return ""
 				}
 			} else {
-				log.Print("New url did not parse")
 				return ""
 			}
 		} else {
-			log.Print("Cannot parse old url")
 			return ""
 		}
 	}
@@ -67,7 +62,6 @@ func Detect(uri string) string {
 // Look for <link rel="icon" and any base url
 func FindFaviconUriInHTML(uri *url.URL, doc *goquery.Document) string {
 	base, iconUrl := HTMLParserHandler(doc)
-	log.Printf("Inside FindFaviconUriInHTML with base %s, iconUrl %s", base, iconUrl)
 	// replace urls that start with  // path since go http cannot retrieve them
 	re := regexp.MustCompile("^(//)")
 	iconUrl = re.ReplaceAllString(iconUrl, uri.Scheme+"://")
