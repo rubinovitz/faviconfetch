@@ -12,7 +12,6 @@ import (
 
 // download favicon
 func GetFavicon(uri string, faviconUri string) []byte {
-	log.Printf("inside GetFavicon with uri %s, faviconUri %s\n", uri, faviconUri)
 	if faviconUri == "" {
 		return nil
 	}
