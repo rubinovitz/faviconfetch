@@ -4,44 +4,54 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"regexp"
-	"strings"
 )
 
 // download favicon
 func GetFavicon(uri string, faviconUri string) []byte {
-<<<<<<< HEAD
-=======
-	fmt.Printf("inside GetFavicon with uri %s, faviconUri %s\n", uri, faviconUri)
->>>>>>> parent of 47d8628... url parsing fixes
 	if faviconUri == "" {
 		return nil
 	}
 	var favicon string
 	// remove any new line characters from url
-	faviconUri = strings.Replace(faviconUri, "%20", "", -1)
+	re := regexp.MustCompile("%20")
+
+	faviconUri = re.ReplaceAllString(faviconUri, "")
 	client := &http.Client{}
 	// get request for favicon
-	req := SetHTTPHeaders(faviconUri)
+	req, err := SetHTTPHeaders(faviconUri)
+	if err != nil {
+		return nil
+	}
 	resp, err := client.Do(req)
 	if os.Getenv("DEBUG") != "" {
 		DumpResponse(resp)
 	}
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
+		return nil
 	}
 	contents, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("contents error: %s", err)
+		log.Printf("contents error: %s", err)
+		return nil
 	}
 	matchHtml, err := regexp.MatchString("(?i)<html>", string(contents))
 	if !matchHtml && string(contents) != "" {
 		contentType := http.DetectContentType(contents)
+		// return plain text as nil
+		matchText, _ := regexp.MatchString("text", contentType)
+		if matchText {
+			return nil
+		}
+		// unzip any compression
 		matchZip, err := regexp.MatchString("(?i)zip", contentType)
 		if err != nil {
-			panic(err)
+			log.Print("Regex error")
+			return nil
 		}
 		if !matchZip {
 			favicon := contents
@@ -52,20 +62,23 @@ func GetFavicon(uri string, faviconUri string) []byte {
 			favicon, err := ioutil.ReadAll(faviconContents)
 			return favicon
 			if err != nil {
-				panic(err)
+				log.Print("Could not read favicon")
+				return nil
 			}
 		}
 	} else {
+		log.Print("Favicon was HTML")
 		return nil
 	}
 	if favicon == "" {
+		log.Print("Favicon was empty")
 		return nil
 	}
 	new_uri := faviconUri + "/favicon.ico"
 	if faviconUri != new_uri {
 		return GetFavicon(uri, new_uri)
 	}
-	fmt.Println("Failed to download favicon")
+	log.Println("Failed to download favicon")
 	// failed to download favicon, give up.
 	return nil
 }
