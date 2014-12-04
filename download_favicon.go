@@ -23,6 +23,9 @@ func GetFavicon(uri string, faviconUri string) []byte {
 	// get request for favicon
 	req, err := SetHTTPHeaders(faviconUri)
 	if err != nil {
+		if os.Getenv("DEBUG") != "" {
+		    fmt.Printf("uri %s, faviconUri %s", uri, faviconUri)
+	        }
 		return nil
 	}
 	resp, err := client.Do(req)
