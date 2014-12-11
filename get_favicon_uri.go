@@ -65,48 +65,39 @@ func FindFaviconUriInHTML(uri *url.URL, doc *goquery.Document) string {
 	re := regexp.MustCompile("^(//)")
 	iconUrl = re.ReplaceAllString(iconUrl, uri.Scheme+"://")
 	base = re.ReplaceAllString(base, uri.Scheme+"://")
-	// if base url and icon url
-	if base != "" && iconUrl != "" {
-		if base == "/" {
-			base = uri.String()
-		}
-		notRel, _ := regexp.MatchString("^([^/])", iconUrl)
-		// make icon url relative pathed if not
-		if notRel {
-			iconUrl = "/" + iconUrl
-		}
-		iconUrl = base + iconUrl
-		return iconUrl
-	}
-	// if no base use uri
+	relIconUrl, _ := regexp.MatchString("^/", iconUrl)
 	if base == "" {
-
-		base = uri.Scheme + "://" + uri.Host
-
+		base = uri.String()
 	}
+	// remove trailing base slash
+	trailingSlash := regexp.MustCompile("/$")
+	base = trailingSlash.ReplaceAllString(base, "")
 
-	// if no icon default to checking /favicon.ico
 	if iconUrl == "" {
-		trailingSlash, _ := regexp.MatchString("/$", base)
-		if trailingSlash {
-			iconUrl = base + "favicon.ico"
-		} else {
-			iconUrl = base + "/favicon.ico"
-			return iconUrl
-		}
+		return base + "/favicon.ico"
+
 	} else {
-		// if iconUrl check to make sure its valid
-		iconUrlParse, err := url.Parse(iconUrl)
-		// if valid, return it
-		if err == nil && iconUrlParse.Scheme != "" {
-			return iconUrl
-			// if invalid, try base and iconUrl
-		} else {
-			iconUrl = base + iconUrl
-			return iconUrl
+		parseIconUrl, err := url.Parse(iconUrl)
+
+		if err == nil && parseIconUrl.Host != "" {
+			if parseIconUrl.Scheme == "" {
+				if relIconUrl {
+					iconUrl = uri.Scheme + "://" + base + iconUrl
+				} else {
+					iconUrl = uri.Scheme + "://" + base + "/" + iconUrl
+
+				}
+			} else {
+				// iconUrl has a scheme
+				return iconUrl
+
+			}
 		}
+
+		return ""
+
 	}
-	return iconUrl
+
 }
 
 // parse the HTML to get the favicon url
